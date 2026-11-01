@@ -1,0 +1,611 @@
+-- New Game Templates (GAMMA)
+-- Standalone UI injection via DXML / UINewGame hooks
+
+local ngt_section = "flx_new_game_templates"
+local ngt_max_slots = 24
+local ngt_chunk_size = 1200
+local ngt_max_chunks = 32
+local ngt_fields = {
+	"format",
+	"character_name", "faction", "icon", "map", "difficulty", "economy", "money", "loadout",
+	"story", "hardcore", "azazel", "survival", "warfare", "campfire", "conditions", "routes",
+	"hardcore_lives", "hardcore_regen", "timer", "soulslike"
+}
+
+local faction_no_story = {
+	["zombied"] = true,
+}
+
+local CLR_HINT = GetARGB(255, 185, 195, 205)
+local CLR_OK   = GetARGB(255, 135, 215, 145)
+local CLR_ERR  = GetARGB(255, 235, 125, 115)
+local CLR_ITEM = GetARGB(255, 232, 235, 240)
+
+local function set_status(wnd, text, clr)
+	if not wnd then return end
+	wnd:SetText(text or "")
+	if clr then
+		wnd:SetTextColor(clr)
+	end
+end
+
+local function ngt_encode(value)
+	value = tostring(value or "")
+	local encoded = value:gsub(".", function(char)
+		return string.format("%02X", string.byte(char))
+	end)
+	return "h2:" .. encoded
+end
+
+local function ngt_decode(value)
+	value = tostring(value or "")
+	if value:sub(1, 3) ~= "h2:" then
+		return value
+	end
+	local encoded = value:sub(4)
+	if (#encoded % 2 ~= 0) or encoded:find("[^%x]") then
+		return ""
+	end
+	return (encoded:gsub("(%x%x)", function(hex)
+		return string.char(tonumber(hex, 16))
+	end))
+end
+
+local function ngt_pack(data)
+	local result = {}
+	for i = 1, #ngt_fields do
+		local key = ngt_fields[i]
+		result[#result + 1] = key .. "=" .. ngt_encode(data[key])
+	end
+	return table.concat(result, "|")
+end
+
+local function ngt_unpack(raw)
+	local result = {}
+	local record = tostring(raw or "")
+	local pattern = record:find("|", 1, true) and "[^|]+" or "[^;]+"
+	for pair in record:gmatch(pattern) do
+		local key, value = pair:match("^([^=]+)=(.*)$")
+		if key then
+			result[key] = ngt_decode(value)
+		end
+	end
+	if result.loadout and result.loadout:find("%%%02X", 1, true) then
+		result.loadout = result.loadout:gsub("%%%%%%02X", ",")
+	end
+	if result.character_name and result.character_name:find("%%%02X", 1, true) then
+		result.character_name = ""
+	end
+	return result
+end
+
+local function ngt_bool(value)
+	return value and "1" or "0"
+end
+
+local function ngt_is_true(value)
+	return tostring(value or "0") == "1"
+end
+
+local function ngt_trim(value)
+	return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function ngt_table_has(tbl, value)
+	if not tbl then
+		return false, nil
+	end
+	for i = 1, #tbl do
+		if tbl[i] == value then
+			return true, i
+		end
+	end
+	return false, nil
+end
+
+class "new_game_template_list_item" (CUIListBoxItem)
+
+function new_game_template_list_item:__init(height) super(height)
+	self.template_slot = nil
+	self.txt = self:GetTextItem()
+	self.txt:SetFont(GetFontLetterica18Russian())
+	self.txt:SetTextColor(CLR_ITEM)
+	self.txt:SetEllipsis(true)
+end
+
+function new_game_template_list_item:__finalize()
+end
+
+local function PopupTemplates_Controls(self)
+	if self._ngt_controls_created then
+		return
+	end
+	self._ngt_controls_created = true
+
+	local xml = CScriptXmlInit()
+	xml:ParseFile("ui_mm_new_game_templates.xml")
+	self.ngt_xml = xml
+
+	self.btn_templates = xml:Init3tButton("btn_templates", self)
+	self:Register(self.btn_templates, "btn_templates")
+
+	self.template_black = xml:InitStatic("popup_templates:frame_black", self)
+	self.template_dialog = xml:InitStatic("popup_templates:frame", self)
+	xml:InitStatic("popup_templates:cap_templates", self.template_dialog)
+	xml:InitStatic("popup_templates:cap_name", self.template_dialog)
+	xml:InitStatic("popup_templates:input_bg", self.template_dialog)
+
+	self.template_name = xml:InitEditBox("popup_templates:input_name", self.template_dialog)
+	self:Register(self.template_name, "template_input_name")
+
+	xml:InitStatic("popup_templates:list_bg", self.template_dialog)
+	self.template_list = xml:InitListBox("popup_templates:list", self.template_dialog)
+	self.template_list:ShowSelectedItem(true)
+	self:Register(self.template_list, "template_list")
+
+	xml:InitStatic("popup_templates:status_bg", self.template_dialog)
+	self.template_status = xml:InitTextWnd("popup_templates:status", self.template_dialog)
+
+	local btn = xml:Init3tButton("popup_templates:btn_save", self.template_dialog)
+	self:Register(btn, "template_save")
+	btn = xml:Init3tButton("popup_templates:btn_load", self.template_dialog)
+	self:Register(btn, "template_load")
+	btn = xml:Init3tButton("popup_templates:btn_delete", self.template_dialog)
+	self:Register(btn, "template_delete")
+	btn = xml:Init3tButton("popup_templates:btn_close", self.template_dialog)
+	self:Register(btn, "template_close")
+end
+
+local function PopupTemplates_Callbacks(self)
+	if self._ngt_callbacks_registered then
+		return
+	end
+	self._ngt_callbacks_registered = true
+
+	self:AddCallback("btn_templates", ui_events.BUTTON_CLICKED, self.OnTemplatesClicked, self)
+	self:AddCallback("template_save", ui_events.BUTTON_CLICKED, self.OnTemplateSave, self)
+	self:AddCallback("template_load", ui_events.BUTTON_CLICKED, self.OnTemplateLoad, self)
+	self:AddCallback("template_delete", ui_events.BUTTON_CLICKED, self.OnTemplateDelete, self)
+	self:AddCallback("template_close", ui_events.BUTTON_CLICKED, self.OnTemplateClose, self)
+	self:AddCallback("template_list", ui_events.LIST_ITEM_CLICKED, self.OnTemplateSelected, self)
+	self:AddCallback("template_list", ui_events.WINDOW_LBUTTON_DB_CLICK, self.OnTemplateLoad, self)
+end
+
+local function PopupTemplates_Show(self, state)
+	if not (self.template_black and self.template_dialog) then
+		return
+	end
+	self.template_black:Show(state)
+	self.template_dialog:Show(state)
+	self.access = not state
+	if state then
+		self.template_name:SetText("")
+		set_status(self.template_status, game.translate_string("st_ngt_hint"), CLR_HINT)
+		self:RefreshTemplateList()
+	end
+end
+
+local function RefreshTemplateList(self, select_slot)
+	if not self.template_list then
+		return
+	end
+	self.template_list:RemoveAll()
+	local list_w = (self.template_list:GetWidth() > 20) and (self.template_list:GetWidth() - 6) or 334
+	local selected_index = nil
+	local index = 0
+	for slot = 1, ngt_max_slots do
+		local raw_name = axr_main.config:r_value(ngt_section, "slot_" .. slot .. "_name", 3)
+		if raw_name and raw_name ~= "" then
+			local name = ngt_decode(raw_name)
+			local item = new_game_template_list_item(24)
+			item:SetWndSize(vector2():set(list_w, 24))
+			item.template_slot = slot
+			item.txt:SetWndSize(vector2():set(list_w, 24))
+			item.txt:SetText(" " .. name)
+			self.template_list:AddExistingItem(item)
+			if slot == select_slot then
+				selected_index = index
+			end
+			index = index + 1
+		end
+	end
+	if selected_index then
+		pcall(function() self.template_list:SetSelectedIndex(selected_index) end)
+	end
+end
+
+local function OnTemplatesClicked(self)
+	if not self.access then
+		return
+	end
+	self:PopupTemplates_Show(true)
+end
+
+local function OnTemplateClose(self)
+	self:PopupTemplates_Show(false)
+end
+
+local function OnTemplateSelected(self)
+	local item = self.template_list and self.template_list:GetSelectedItem()
+	if item and item.template_slot then
+		local raw_name = axr_main.config:r_value(ngt_section, "slot_" .. item.template_slot .. "_name", 3)
+		if raw_name then
+			self.template_name:SetText(ngt_decode(raw_name))
+		end
+	end
+end
+
+local function GetTemplateLoadout(self)
+	local loadout = {}
+	if self.CC and self.CC["inventory"] and self.CC["inventory"].cell then
+		for _, ci in pairs(self.CC["inventory"].cell) do
+			if ci:IsShown() then
+				for i = 1, (ci:CountChilds() + 1) do
+					loadout[#loadout + 1] = ci.section
+				end
+			end
+		end
+	end
+	table.sort(loadout)
+	return table.concat(loadout, ",")
+end
+
+local function CaptureTemplateData(self)
+	return {
+		format = "3",
+		character_name = self.character_name and self.character_name:GetText() or "",
+		faction = self.selected_faction,
+		icon = self.selected_icon,
+		map = self.selected_map,
+		difficulty = self.selected_difficulty,
+		economy = self.selected_economy,
+		money = self.selected_money,
+		loadout = self:GetTemplateLoadout(),
+		story = ngt_bool(self.ck_story and self.ck_story:GetCheck()),
+		hardcore = ngt_bool(self.ck_hardcore and self.ck_hardcore:GetCheck()),
+		azazel = ngt_bool(self.ck_azazel_mode and self.ck_azazel_mode:GetCheck()),
+		survival = ngt_bool(self.ck_survival and self.ck_survival:GetCheck()),
+		warfare = ngt_bool(self.ck_warfare and self.ck_warfare:GetCheck()),
+		campfire = ngt_bool(self.ck_campfire and self.ck_campfire:GetCheck()),
+		conditions = ngt_bool(self.ck_conditions and self.ck_conditions:GetCheck()),
+		routes = ngt_bool(self.ck_routes and self.ck_routes:GetCheck()),
+		hardcore_lives = self.selected_hardcore_lives and self.selected_hardcore_lives[1] or "",
+		hardcore_regen = self.selected_hardcore_regen and self.selected_hardcore_regen[1] or "",
+		timer = self.selected_timer and self.selected_timer[1] or "",
+		soulslike = ngt_bool(self.ck_soulslike_mode and self.ck_soulslike_mode:GetCheck())
+	}
+end
+
+local function OnTemplateSave(self)
+	local name = ngt_trim(self.template_name:GetText())
+	if name == "" then
+		set_status(self.template_status, game.translate_string("st_ngt_error_name"), CLR_ERR)
+		return
+	end
+
+	local target_slot = nil
+	local first_free = nil
+	for slot = 1, ngt_max_slots do
+		local raw_name = axr_main.config:r_value(ngt_section, "slot_" .. slot .. "_name", 3)
+		if not raw_name or raw_name == "" then
+			first_free = first_free or slot
+		elseif ngt_decode(raw_name) == name then
+			target_slot = slot
+			break
+		end
+	end
+	target_slot = target_slot or first_free
+	if not target_slot then
+		set_status(self.template_status, game.translate_string("st_ngt_error_full"), CLR_ERR)
+		return
+	end
+
+	local prefix = "slot_" .. target_slot .. "_"
+	local packed = ngt_pack(self:CaptureTemplateData())
+	local parts = math.ceil(#packed / ngt_chunk_size)
+	if parts > ngt_max_chunks then
+		set_status(self.template_status, game.translate_string("st_ngt_error_data"), CLR_ERR)
+		return
+	end
+
+	axr_main.config:w_value(ngt_section, prefix .. "name", ngt_encode(name))
+	axr_main.config:w_value(ngt_section, prefix .. "data")
+	for part = 1, ngt_max_chunks do
+		axr_main.config:w_value(ngt_section, prefix .. "data_" .. part)
+	end
+	axr_main.config:w_value(ngt_section, prefix .. "data_parts", tostring(parts))
+	for part = 1, parts do
+		local first = ((part - 1) * ngt_chunk_size) + 1
+		local last = part * ngt_chunk_size
+		axr_main.config:w_value(ngt_section, prefix .. "data_" .. part, packed:sub(first, last))
+	end
+	axr_main.config:save()
+	self:RefreshTemplateList(target_slot)
+	set_status(self.template_status, game.translate_string("st_ngt_saved") .. ": " .. name, CLR_OK)
+end
+
+local function GetSelectedTemplate(self)
+	local item = self.template_list and self.template_list:GetSelectedItem()
+	if not item or not item.template_slot then
+		set_status(self.template_status, game.translate_string("st_ngt_error_select"), CLR_ERR)
+		return nil, nil
+	end
+	local prefix = "slot_" .. item.template_slot .. "_"
+	local parts = tonumber(axr_main.config:r_value(ngt_section, prefix .. "data_parts", 3)) or 0
+	local raw = nil
+	if parts > 0 and parts <= ngt_max_chunks then
+		local chunks = {}
+		for part = 1, parts do
+			local chunk = axr_main.config:r_value(ngt_section, prefix .. "data_" .. part, 3)
+			if not chunk or chunk == "" then
+				chunks = nil
+				break
+			end
+			chunks[#chunks + 1] = chunk
+		end
+		if chunks then
+			raw = table.concat(chunks)
+		end
+	else
+		raw = axr_main.config:r_value(ngt_section, prefix .. "data", 3)
+	end
+	if not raw or raw == "" then
+		set_status(self.template_status, game.translate_string("st_ngt_error_data"), CLR_ERR)
+		return nil, nil
+	end
+	return ngt_unpack(raw), item.template_slot
+end
+
+local function ApplyTemplateLoadout(self, raw_loadout)
+	if not (self.CC and self.CC["inventory"] and self.CC["loadout"]) then
+		return 0
+	end
+	local wanted = {}
+	for section in tostring(raw_loadout or ""):gmatch("[^,]+") do
+		wanted[section] = (wanted[section] or 0) + 1
+	end
+
+	local current = {}
+	for _, ci in pairs(self.CC["inventory"].cell) do
+		if ci:IsShown() then
+			current[ci.section] = (current[ci.section] or 0) + ci:CountChilds() + 1
+		end
+	end
+
+	local missing = 0
+	for section, count in pairs(wanted) do
+		local need = math.max(0, count - (current[section] or 0))
+		for n = 1, need do
+			local found = false
+			for _, ci in pairs(self.CC["loadout"].cell) do
+				if ci:IsShown() and ci.section == section then
+					local points = ci.flags.value or 0
+					if points <= self.points_left then
+						self.points_used = self.points_used + points
+						self.points_left = self.points_left - points
+						self.CC["loadout"]:TransferItem(self.CC["inventory"], nil, section)
+						found = true
+					end
+					break
+				end
+			end
+			if not found then
+				missing = missing + 1
+			end
+		end
+	end
+
+	if self.text_points_used then
+		self.text_points_used:SetText(tostring(self.points_used))
+	end
+	if self.text_points_left then
+		self.text_points_left:SetText(tostring(self.points_left))
+	end
+	return missing
+end
+
+local function SetTemplateOption(self, control, value)
+	if control then
+		control:SetCheck(ngt_is_true(value))
+	end
+end
+
+local function SetTemplateChoice(self, table_values, value, combo, kind)
+	if not table_values or #table_values == 0 then
+		return nil
+	end
+	local numeric = tonumber(value)
+	for i = 1, #table_values do
+		local choice = table_values[i]
+		if tonumber(choice[1]) == numeric or (choice[1] == nil and (value == nil or value == "")) then
+			if combo then
+				if kind == "regen" then
+					local prefix = choice[1] and tostring(round_idp(choice[1] / 24)) or ""
+					combo:SetText(prefix .. " " .. game.translate_string(choice[2]))
+				else
+					combo:SetText((choice[1] or "") .. " " .. game.translate_string(choice[2]))
+				end
+			end
+			return choice
+		end
+	end
+	return table_values[1]
+end
+
+local function OnTemplateLoad(self)
+	local data = self:GetSelectedTemplate()
+	if not data then
+		return
+	end
+
+	local faction = (self.table_faction and self.table_faction[data.faction]) and data.faction or "stalker"
+	if self.table_economy then
+		local economy_ok = ngt_table_has(self.table_economy, data.economy)
+		self.selected_economy = economy_ok and data.economy or self.table_economy[1]
+		if self.list_economy then
+			self.list_economy:SetText(game.translate_string(self.selected_economy))
+		end
+	end
+	if self.OnFactionSelect then
+		self:OnFactionSelect(faction)
+	end
+
+	if data.character_name and data.character_name ~= "" and self.character_name then
+		self.character_name:SetText(data.character_name)
+	end
+
+	local icon_ok = ngt_table_has(self.table_icon, data.icon)
+	if icon_ok then
+		self.selected_icon = data.icon
+		if self.UpdateIcon then
+			self:UpdateIcon()
+		end
+	end
+
+	local map_ok, map_index = ngt_table_has(self.table_map, data.map)
+	if map_ok then
+		self.selected_map = data.map
+		if self.list_map then
+			self.list_map:SetText(game.translate_string("ui_st_" .. data.map))
+			pcall(function() self.list_map:SetCurrentIdx(map_index) end)
+		end
+		if self.UpdateMap then
+			self:UpdateMap()
+		end
+	end
+
+	if self.table_difficulty then
+		local difficulty_ok = ngt_table_has(self.table_difficulty, data.difficulty)
+		self.selected_difficulty = difficulty_ok and data.difficulty or self.table_difficulty[1]
+		if self.list_difficulty then
+			self.list_difficulty:SetText(game.translate_string(self.selected_difficulty))
+		end
+	end
+
+	self:SetTemplateOption(self.ck_story, data.story)
+	self:SetTemplateOption(self.ck_hardcore, data.hardcore)
+	self:SetTemplateOption(self.ck_azazel_mode, data.azazel)
+	self:SetTemplateOption(self.ck_survival, data.survival)
+	self:SetTemplateOption(self.ck_warfare, data.warfare)
+	self:SetTemplateOption(self.ck_campfire, data.campfire)
+	self:SetTemplateOption(self.ck_conditions, data.conditions)
+	self:SetTemplateOption(self.ck_routes, data.routes)
+	self:SetTemplateOption(self.ck_soulslike_mode, data.soulslike)
+	if faction_no_story[faction] and self.ck_story then
+		self.ck_story:SetCheck(false)
+	end
+
+	self.selected_hardcore_lives = self:SetTemplateChoice(self.table_hardcore_lives, data.hardcore_lives, self.list_hardcore_lives, "lives")
+	self.selected_hardcore_regen = self:SetTemplateChoice(self.table_hardcore_regen, data.hardcore_regen, self.list_hardcore_regen, "regen")
+	self.selected_timer = self:SetTemplateChoice(self.table_timer, data.timer, self.list_timer, "timer")
+
+	local missing = self:ApplyTemplateLoadout(data.loadout)
+	self:PopupTemplates_Show(false)
+	if missing > 0 then
+		printf("[New Game Templates] skipped unavailable or unaffordable items: %s", missing)
+	end
+end
+
+local function OnTemplateDelete(self)
+	local item = self.template_list and self.template_list:GetSelectedItem()
+	if not item or not item.template_slot then
+		set_status(self.template_status, game.translate_string("st_ngt_error_select"), CLR_ERR)
+		return
+	end
+	local slot = item.template_slot
+	local prefix = "slot_" .. slot .. "_"
+	axr_main.config:w_value(ngt_section, prefix .. "name")
+	axr_main.config:w_value(ngt_section, prefix .. "data")
+	axr_main.config:w_value(ngt_section, prefix .. "data_parts")
+	for part = 1, ngt_max_chunks do
+		axr_main.config:w_value(ngt_section, prefix .. "data_" .. part)
+	end
+	axr_main.config:save()
+	self:RefreshTemplateList()
+	set_status(self.template_status, game.translate_string("st_ngt_deleted"), CLR_OK)
+end
+
+local function init_ngt_ui(self)
+	if self._ngt_initialized then
+		return
+	end
+	self._ngt_initialized = true
+	self:PopupTemplates_Controls()
+	self:PopupTemplates_Callbacks()
+	self:PopupTemplates_Show(false)
+end
+
+local patched_init_fn = nil
+local patched_popup_icon_show_fn = nil
+local patched_kb_fn = nil
+
+local function patch_ui_new_game()
+	if not (ui_mm_faction_select and ui_mm_faction_select.UINewGame) then
+		return
+	end
+	local UINewGame = ui_mm_faction_select.UINewGame
+
+	UINewGame.PopupTemplates_Controls = PopupTemplates_Controls
+	UINewGame.PopupTemplates_Callbacks = PopupTemplates_Callbacks
+	UINewGame.PopupTemplates_Show = PopupTemplates_Show
+	UINewGame.RefreshTemplateList = RefreshTemplateList
+	UINewGame.OnTemplatesClicked = OnTemplatesClicked
+	UINewGame.OnTemplateClose = OnTemplateClose
+	UINewGame.OnTemplateSelected = OnTemplateSelected
+	UINewGame.GetTemplateLoadout = GetTemplateLoadout
+	UINewGame.CaptureTemplateData = CaptureTemplateData
+	UINewGame.OnTemplateSave = OnTemplateSave
+	UINewGame.GetSelectedTemplate = GetSelectedTemplate
+	UINewGame.ApplyTemplateLoadout = ApplyTemplateLoadout
+	UINewGame.SetTemplateOption = SetTemplateOption
+	UINewGame.SetTemplateChoice = SetTemplateChoice
+	UINewGame.OnTemplateLoad = OnTemplateLoad
+	UINewGame.OnTemplateDelete = OnTemplateDelete
+
+	if UINewGame.__init ~= patched_init_fn then
+		local orig_init = UINewGame.__init
+		patched_init_fn = function(self, owner)
+			orig_init(self, owner)
+			init_ngt_ui(self)
+		end
+		UINewGame.__init = patched_init_fn
+	end
+
+	if UINewGame.PopupIcon_Show and UINewGame.PopupIcon_Show ~= patched_popup_icon_show_fn then
+		local orig_popup_icon_show = UINewGame.PopupIcon_Show
+		patched_popup_icon_show_fn = function(self, state)
+			orig_popup_icon_show(self, state)
+			init_ngt_ui(self)
+		end
+		UINewGame.PopupIcon_Show = patched_popup_icon_show_fn
+	end
+
+	if UINewGame.OnKeyboard ~= patched_kb_fn then
+		local orig_kb = UINewGame.OnKeyboard
+		patched_kb_fn = function(self, dik, keyboard_action)
+			if (not self.access) and self.template_dialog and self.template_dialog:IsShown() then
+				local res = CUIScriptWnd.OnKeyboard(self, dik, keyboard_action)
+				if keyboard_action == ui_events.WINDOW_KEY_PRESSED and dik == DIK_keys.DIK_ESCAPE then
+					self:PopupTemplates_Show(false)
+					return true
+				end
+				return res
+			end
+			return orig_kb(self, dik, keyboard_action)
+		end
+		UINewGame.OnKeyboard = patched_kb_fn
+	end
+end
+
+function on_xml_read()
+	RegisterScriptCallback("on_xml_read", function(xml_file_name)
+		if type(xml_file_name) == "string" and (xml_file_name:find("ui_mm_main") or xml_file_name:find("ui_mm_faction_select")) then
+			patch_ui_new_game()
+		end
+	end)
+end
+
+function on_game_start()
+	patch_ui_new_game()
+	RegisterScriptCallback("main_menu_on_init", patch_ui_new_game)
+end

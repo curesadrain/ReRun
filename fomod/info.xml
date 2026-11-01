@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<fomod>
+	<Name>ReRun - New Game Templates (GAMMA)</Name>
+	<Author>Sorano (curesadrain), flx</Author>
+	<Version>1.1.0</Version>
+	<Website>https://github.com/curesadrain/ReRun</Website>
+	<Description>Fast saving and loading of new game presets for S.T.A.L.K.E.R. Anomaly / G.A.M.M.A. without overwriting interface files.</Description>
+</fomod>

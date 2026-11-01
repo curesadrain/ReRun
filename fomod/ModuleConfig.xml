@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+	<moduleName>ReRun - New Game Templates</moduleName>
+	<moduleImage path="fomod\images\top_center.png"/>
+	<requiredInstallFiles>
+		<folder source="00_Core\gamedata" destination="gamedata" priority="0"/>
+	</requiredInstallFiles>
+	<installSteps order="Explicit">
+		<installStep name="Положение кнопки (Button Position)">
+			<optionalFileGroups order="Explicit">
+				<group name="Расположение кнопки «Шаблоны»" type="SelectExactlyOne">
+					<plugins order="Explicit">
+					<plugin name="Верх - Лево (Top-Left)">
+						<description>Кнопка «Шаблоны» в верхнем левом углу экрана.</description>
+						<image path="fomod\images\top_left.png"/>
+						<files>
+							<folder source="01_Top_Left\gamedata" destination="gamedata" priority="1"/>
+						</files>
+						<typeDescriptor>
+							<type name="Optional"/>
+						</typeDescriptor>
+					</plugin>
+					<plugin name="Верх - Центр (Top-Center)">
+						<description>Кнопка «Шаблоны» сверху посередине экрана (по умолчанию).</description>
+						<image path="fomod\images\top_center.png"/>
+						<files>
+							<folder source="02_Top_Center\gamedata" destination="gamedata" priority="1"/>
+						</files>
+						<typeDescriptor>
+							<type name="Recommended"/>
+						</typeDescriptor>
+					</plugin>
+					<plugin name="Верх - Право (Top-Right)">
+						<description>Кнопка «Шаблоны» в верхнем правом углу экрана.</description>
+						<image path="fomod\images\top_right.png"/>
+						<files>
+							<folder source="03_Top_Right\gamedata" destination="gamedata" priority="1"/>
+						</files>
+						<typeDescriptor>
+							<type name="Optional"/>
+						</typeDescriptor>
+					</plugin>
+					<plugin name="Низ - Лево (Bottom-Left)">
+						<description>Кнопка «Шаблоны» в нижнем левом углу экрана.</description>
+						<image path="fomod\images\bottom_left.png"/>
+						<files>
+							<folder source="04_Bottom_Left\gamedata" destination="gamedata" priority="1"/>
+						</files>
+						<typeDescriptor>
+							<type name="Optional"/>
+						</typeDescriptor>
+					</plugin>
+					<plugin name="Низ - Центр (Bottom-Center)">
+						<description>Кнопка «Шаблоны» снизу посередине экрана.</description>
+						<image path="fomod\images\bottom_center.png"/>
+						<files>
+							<folder source="05_Bottom_Center\gamedata" destination="gamedata" priority="1"/>
+						</files>
+						<typeDescriptor>
+							<type name="Optional"/>
+						</typeDescriptor>
+					</plugin>
+					<plugin name="Низ - Право (Bottom-Right)">
+						<description>Кнопка «Шаблоны» в нижнем правом углу экрана.</description>
+						<image path="fomod\images\bottom_right.png"/>
+						<files>
+							<folder source="06_Bottom_Right\gamedata" destination="gamedata" priority="1"/>
+						</files>
+						<typeDescriptor>
+							<type name="Optional"/>
+						</typeDescriptor>
+					</plugin>
+					</plugins>
+				</group>
+			</optionalFileGroups>
+		</installStep>
+	</installSteps>
+</config>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="windows-1251" ?>
+<string_table>
+    <string id="st_ngt_templates"><text>Templates</text></string>
+    <string id="st_ngt_title"><text>NEW GAME TEMPLATES</text></string>
+    <string id="st_ngt_name"><text>Name:</text></string>
+    <string id="st_ngt_save"><text>Save</text></string>
+    <string id="st_ngt_load"><text>Load</text></string>
+    <string id="st_ngt_delete"><text>Delete</text></string>
+    <string id="st_ngt_close"><text>Close</text></string>
+    <string id="st_ngt_hint"><text>Enter a name to save, or select an existing template.</text></string>
+    <string id="st_ngt_saved"><text>Template saved</text></string>
+    <string id="st_ngt_deleted"><text>Template deleted.</text></string>
+    <string id="st_ngt_error_name"><text>Enter a template name.</text></string>
+    <string id="st_ngt_error_full"><text>Template storage is full.</text></string>
+    <string id="st_ngt_error_select"><text>Select a template first.</text></string>
+    <string id="st_ngt_error_data"><text>The selected template is damaged.</text></string>
+</string_table>
+

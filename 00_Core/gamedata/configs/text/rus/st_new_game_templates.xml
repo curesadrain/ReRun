@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="windows-1251" ?>
+<string_table>
+    <string id="st_ngt_templates"><text>Шаблоны</text></string>
+    <string id="st_ngt_title"><text>ШАБЛОНЫ НОВОЙ ИГРЫ</text></string>
+    <string id="st_ngt_name"><text>Название:</text></string>
+    <string id="st_ngt_save"><text>Сохранить</text></string>
+    <string id="st_ngt_load"><text>Загрузить</text></string>
+    <string id="st_ngt_delete"><text>Удалить</text></string>
+    <string id="st_ngt_close"><text>Закрыть</text></string>
+    <string id="st_ngt_hint"><text>Введите название или выберите сохранённый шаблон.</text></string>
+    <string id="st_ngt_saved"><text>Шаблон сохранён</text></string>
+    <string id="st_ngt_deleted"><text>Шаблон удалён.</text></string>
+    <string id="st_ngt_error_name"><text>Введите название шаблона.</text></string>
+    <string id="st_ngt_error_full"><text>Все ячейки шаблонов заняты.</text></string>
+    <string id="st_ngt_error_select"><text>Сначала выберите шаблон.</text></string>
+    <string id="st_ngt_error_data"><text>Данные выбранного шаблона повреждены.</text></string>
+</string_table>
